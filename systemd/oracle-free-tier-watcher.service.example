@@ -5,7 +5,7 @@ After=network-online.target
 ConditionPathExists=/etc/oracle-free-tier-watcher/watcher.env
 
 [Service]
-Type=oneshot
+Type=simple
 User=oracle-watcher
 Group=oracle-watcher
 EnvironmentFile=/etc/oracle-free-tier-watcher/watcher.env
