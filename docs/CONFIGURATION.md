@@ -8,7 +8,7 @@ The repository is public. Keep all of the following outside the checkout:
 - Production logs, CLI output and state files.
 - Any local configuration containing infrastructure identifiers.
 
-Use OCI CLI's local configuration/key-file mechanism or an approved secret manager. Never paste private key material into issues, pull requests, Actions logs or this repository. The example file contains only placeholders.
+Use OCI CLI's local configuration/key-file mechanism or an approved secret manager. Never paste private key material into issues, pull requests, Actions logs or this repository. The example file contains only placeholders. The selected profile must define an absolute `key_file` path outside any home directory; the watcher checks that the OCI config and private key are not accessible by group/other users. Use `chmod 600` for both files and keep the private key owned by the dedicated service account or root with controlled read access.
 
 ## Local setup
 
@@ -16,7 +16,7 @@ Create a protected configuration directory on the target Linux host, copy `confi
 
 Verify that the OCI CLI profile can list the intended compartment and that the referenced image, subnet, shape, and availability domain are valid in the selected region. Confirm whether the image accepts the configured shape and whether quotas are available.
 
-The service account should have only the OCI IAM permissions required for its intended actions. Do not grant tenancy-wide administration just to make the watcher work.
+The service account should have only the OCI IAM permissions required for its intended actions. Do not grant tenancy-wide administration just to make the watcher work. Install the OCI CLI at `/usr/local/bin/oci` (or update the local configuration to a verified absolute path) because the example systemd unit hides home directories and uses a dedicated `oracle-watcher` account. Place the OCI config, its private key, SSH public key, and environment file under `/etc/oracle-free-tier-watcher/` with restrictive ownership and permissions.
 
 ## Dry-run first
 
