@@ -37,9 +37,9 @@ done
 # key should live under /etc/oracle-free-tier-watcher, not under a home folder.
 KEY_FILE=$(awk -v profile="$OCI_PROFILE" '
   /^[[:space:]]*#/ { next }
-  /^[[:space:]]*\\[/ {
+  /^[[:space:]]*\[/ {
     section=$0
-    gsub(/^[[:space:]]*\\[|\\][[:space:]]*$/, "", section)
+    gsub(/^[[:space:]]*\[|\][[:space:]]*$/, "", section)
     active=(section == profile)
     next
   }
