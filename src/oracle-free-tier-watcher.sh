@@ -132,6 +132,14 @@ while true; do
     continue
   fi
 
+  # Fail closed if OCI returns malformed/unexpected JSON. Never launch on
+  # an unreadable instance-list response, because that can create duplicates.
+  if ! printf '%s' "$EXISTING" | jq -e '.data | type == "array"' >/dev/null 2>&1; then
+    unset EXISTING
+    log "INSTANCE_LIST_INVALID_RESPONSE; refusing to launch"
+    sleep "$INSTANCE_LIST_ERROR_BACKOFF_SECONDS"
+    continue
+  fi
   # Any non-terminated instance with the target display name is treated as
   # success. Never put its OCID into logs/state.
   if printf '%s' "$EXISTING" | jq -e '.data[]? | select(."lifecycle-state" != "TERMINATED")' >/dev/null; then
