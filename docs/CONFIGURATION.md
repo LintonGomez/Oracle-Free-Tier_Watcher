@@ -8,7 +8,7 @@ The repository is public. Keep all of the following outside the checkout:
 - Production logs, CLI output and state files.
 - Any local configuration containing infrastructure identifiers.
 
-Use OCI CLI's local configuration/key-file mechanism or an approved secret manager. Never paste private key material into issues, pull requests, Actions logs or this repository. The example file contains only placeholders. The selected profile must define an absolute `key_file` path outside any home directory; the watcher checks that the OCI config and private key are not accessible by group/other users. Use `chmod 600` for both files and keep the private key owned by the dedicated service account or root with controlled read access.
+Use OCI CLI's local configuration/key-file mechanism or an approved secret manager. Never paste private key material into issues, pull requests, Actions logs or this repository. The example file contains only placeholders. The selected profile must define an absolute `key_file` path outside any home directory; the watcher checks that the OCI config and private key are not accessible by group/other users. Use `chmod 600` for both files and make the dedicated `oracle-watcher` account the owner of the private key and keep it mode `0600`.
 
 ## Local setup
 
