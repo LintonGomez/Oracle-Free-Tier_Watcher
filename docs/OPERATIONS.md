@@ -34,3 +34,14 @@ Guarda los registros y el estado de ejecución fuera del directorio del código,
 ## Tratamiento de errores
 
 Los errores transitorios de capacidad pueden reintentarse con esperas limitadas. Los errores de autenticación, autorización, cuotas, configuración o recursos inexistentes no deben generar llamadas repetidas de forma agresiva. Revisa los registros de manera privada y corrige la causa antes de habilitar nuevos intentos. No publiques respuestas crudas de OCI ni salida sin redactar. Si el JSON devuelto al consultar instancias no es válido, la implementación debe detener el flujo de lanzamiento y aplicar una espera segura.
+
+## Pruebas locales con OCI simulado
+
+Desde la raíz del repositorio, ejecuta:
+
+```bash
+bash -n src/oracle-free-tier-watcher.sh
+bash tests/test-mocked-oci.sh
+```
+
+La prueba utiliza un ejecutable OCI falso y respuestas JSON de ejemplo. No llama a la red, no lee la configuración real de OCI y no crea recursos. Comprueba tres casos: capacidad disponible en modo `DRY_RUN`, capacidad no disponible y una instancia existente. Requiere Bash, `jq`, `flock`, `timeout` y utilidades básicas del sistema. Es una prueba de humo local, no sustituye ShellCheck ni una integración controlada con OCI.
