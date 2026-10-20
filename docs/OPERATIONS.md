@@ -1,17 +1,17 @@
-# Operations
+# Operación
 
-## Before running
+## Antes de ejecutar
 
-1. Verify the target host, OCI CLI path, local OCI config/profile, selected region, compartment, image, subnet, SSH public key and compute shape.
-2. Verify that the target instance name does not refer to a different or important instance.
-3. Confirm quotas, free-tier eligibility and possible charges.
-4. Start in dry-run mode and inspect logs.
+1. Verifica el equipo de destino, la ruta de OCI CLI, el perfil y archivo de configuración local, la región, el compartment, la imagen, la subnet, la clave pública SSH y la forma de cómputo.
+2. Comprueba que el criterio de nombre o identificación no coincida con una instancia distinta que quieras conservar.
+3. Confirma cuotas, elegibilidad Free Tier y posibles cargos.
+4. Empieza con el modo de simulación y revisa los registros localmente.
 
-## Service lifecycle
+## Ciclo de vida del servicio
 
-The systemd unit example is intentionally not enabled automatically. After adapting its user, paths, environment file and permissions, install and inspect it manually.
+La unidad de systemd es un ejemplo y no se habilita automáticamente. Antes de instalarla, adapta el usuario, las rutas, el archivo de entorno y los permisos; después revisa manualmente su configuración.
 
-Check status:
+Consulta el estado:
 
 ```bash
 systemctl status oracle-free-tier-watcher.service --no-pager
@@ -19,18 +19,18 @@ systemctl is-enabled oracle-free-tier-watcher.service
 systemctl is-active oracle-free-tier-watcher.service
 ```
 
-Stop now and prevent automatic starts:
+Para detener el servicio y evitar que arranque automáticamente:
 
 ```bash
 sudo systemctl disable --now oracle-free-tier-watcher.service
 ```
 
-Verify the results. Expected output is `disabled` and `inactive`. Also check for a systemd timer or other scheduler separately if one was installed. The example unit is sandboxed and does not auto-restart; a separate timer must be reviewed explicitly before enabling it.
+Verifica el resultado; se espera disabled e inactive. Comprueba por separado si se instaló un temporizador de systemd u otro programador. La unidad de ejemplo no se reinicia automáticamente; cualquier temporizador debe revisarse antes de habilitarlo.
 
-## Logs and state
+## Registros y estado
 
-Keep logs and runtime state outside the checkout, with restrictive filesystem permissions. Avoid sharing unredacted logs publicly: OCI CLI error responses can contain identifiers and other infrastructure details.
+Guarda los registros y el estado de ejecución fuera del directorio del código, con permisos restrictivos. No compartas registros sin revisar: las respuestas de OCI CLI pueden contener identificadores u otros detalles de infraestructura.
 
-## Failure handling
+## Tratamiento de errores
 
-Transient capacity errors may be retried with bounded backoff. Authentication, authorization, quota, invalid configuration, missing resources, and throttling errors should not lead to rapid repeated launch calls. Review logs privately and correct the underlying cause before enabling retries. The watcher intentionally suppresses raw OCI CLI responses because they can contain resource identifiers; diagnose OCI failures locally and never paste unredacted output into public issues. Malformed instance-list JSON causes a fail-closed backoff rather than a launch attempt.
+Los errores transitorios de capacidad pueden reintentarse con esperas limitadas. Los errores de autenticación, autorización, cuotas, configuración o recursos inexistentes no deben generar llamadas repetidas de forma agresiva. Revisa los registros de manera privada y corrige la causa antes de habilitar nuevos intentos. No publiques respuestas crudas de OCI ni salida sin redactar. Si el JSON devuelto al consultar instancias no es válido, la implementación debe detener el flujo de lanzamiento y aplicar una espera segura.
