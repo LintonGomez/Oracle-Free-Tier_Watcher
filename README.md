@@ -20,7 +20,7 @@ La implementación original empleaba:
 - Reintentos con pausa y jitter, rotación de dominios de disponibilidad.
 - Backoff ante throttling y pausas más largas ante errores que requieren intervención.
 - Registro de estado y un lock para evitar ejecuciones concurrentes.
-- Salida cuando encuentra una instancia existente o consigue crearla.
+- Salida inmediata cuando encuentra una instancia existente o la API confirma la creación de la instancia; no inicia otro intento después del éxito.
 
 La versión saneada mantiene estas ideas en una configuración explícita, y evita incrustar OCID en el código. Antes de producción requiere pruebas en un entorno controlado.
 
