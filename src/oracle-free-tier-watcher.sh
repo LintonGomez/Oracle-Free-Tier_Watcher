@@ -94,6 +94,7 @@ while true; do
 
   ID=$(printf '%s' "$EXISTING" | jq -r '.data[]? | select(."lifecycle-state" != "TERMINATED") | .id' | head -n1 || true)
   if [[ -n "$ID" ]]; then
+    # Avoid printing OCIDs to logs or state files; this is a public project.
     log "INSTANCE_EXISTS watcher_stopping=true"
     printf 'INSTANCE_EXISTS\n' > "$STATE_FILE"
     exit 0
@@ -115,6 +116,8 @@ while true; do
         --region "$REGION" --wait-for-state RUNNING --max-wait-seconds "$LAUNCH_TIMEOUT_SECONDS" 2>&1); then
       ID=$(printf '%s' "$LAUNCH_JSON" | jq -r '.data.id // empty' 2>/dev/null || true)
       if [[ -n "$ID" ]]; then
+        # An accepted create request is success: stop immediately and do not
+        # issue a second launch. Keep the OCID out of logs/state files.
         log "INSTANCE_CREATED watcher_stopping=true"
         printf 'INSTANCE_CREATED\n' > "$STATE_FILE"
         exit 0
