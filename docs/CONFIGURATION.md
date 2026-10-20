@@ -1,31 +1,31 @@
-# Configuration and security
+# Configuración y seguridad
 
-## Never store secrets in Git
+## Nunca guardes secretos en Git
 
-The repository is public. Keep all of the following outside the checkout:
-- OCI API private keys, SSH private keys, auth tokens and session tokens.
-- Real tenancy, compartment, image, subnet and instance OCIDs.
-- Production logs, CLI output and state files.
-- Any local configuration containing infrastructure identifiers.
+Este repositorio es público. Mantén fuera del repositorio:
+- Claves privadas de la API de OCI, claves SSH privadas, tokens y credenciales de sesión.
+- OCID reales de tenancy, compartment, imagen, subnet e instancias.
+- Registros operativos, salida de CLI y archivos de estado.
+- Cualquier configuración local que contenga identificadores de infraestructura.
 
-Use OCI CLI's local configuration/key-file mechanism or an approved secret manager. Never paste private key material into issues, pull requests, Actions logs or this repository. The example file contains only placeholders. The selected profile must define an absolute `key_file` path outside any home directory; the watcher checks that the OCI config and private key are not accessible by group/other users. Use `chmod 600` for both files and make the dedicated `oracle-watcher` account the owner of the private key and keep it mode `0600`.
+Usa el mecanismo de configuración y archivos de clave local de OCI CLI o un gestor de secretos adecuado. Nunca pegues claves privadas en incidencias, pull requests, registros de GitHub Actions ni en este repositorio. Los archivos de ejemplo deben contener solo marcadores de posición. La configuración OCI y la clave privada deben tener permisos restrictivos y estar accesibles únicamente para la cuenta de servicio que las necesita.
 
-## Local setup
+## Preparación local
 
-Create a protected configuration directory on the target Linux host, copy `config/watcher.env.example` to that directory, replace the placeholder values, and set owner and mode appropriately (for example, root-owned mode `0600` when used by a root-managed service).
+Crea un directorio de configuración protegido en el equipo de destino y copia config/watcher.env.example a esa ubicación. Sustituye los valores de ejemplo y asigna propietario y permisos adecuados. No guardes la configuración dentro del checkout del repositorio ni la sincronices públicamente.
 
-Verify that the OCI CLI profile can list the intended compartment and that the referenced image, subnet, shape, and availability domain are valid in the selected region. Confirm whether the image accepts the configured shape and whether quotas are available.
+Comprueba que el perfil OCI pueda consultar el compartment previsto y que la imagen, subnet, forma de cómputo y dominio de disponibilidad sean válidos en la región seleccionada. Confirma la compatibilidad de la imagen y la forma de cómputo, además de las cuotas disponibles.
 
-The service account should have only the OCI IAM permissions required for its intended actions. Do not grant tenancy-wide administration just to make the watcher work. Install the OCI CLI at `/usr/local/bin/oci` (or update the local configuration to a verified absolute path) because the example systemd unit hides home directories and uses a dedicated `oracle-watcher` account. Place the OCI config, its private key, SSH public key, and environment file under `/etc/oracle-free-tier-watcher/` with restrictive ownership and permissions.
+La cuenta de servicio debe tener únicamente los permisos IAM de OCI necesarios para las acciones previstas. No concedas administración de toda la tenancy si no es imprescindible. La unidad de systemd de ejemplo utiliza un usuario dedicado y restringe el acceso a directorios del sistema; adapta las rutas y permisos de forma coherente con ese aislamiento.
 
-## Dry-run first
+## Simulación antes de crear recursos
 
-Keep `DRY_RUN=true`. Confirm instance detection, configuration loading, logging and shutdown. Only set `DRY_RUN=false` after reviewing the command and verifying that each launch parameter is correct. Launching an instance changes cloud resources and may incur charges outside eligible free quotas.
+Mantén DRY_RUN=true al comenzar. Verifica la carga de configuración, la detección de instancias, los registros y la parada. Cambia DRY_RUN a false únicamente después de revisar los parámetros de lanzamiento y confirmar que son correctos. Crear una instancia modifica recursos en la nube y puede generar cargos fuera de las cuotas elegibles para Free Tier.
 
-## Public-repository hygiene
+## Higiene del repositorio público
 
-Before every commit, inspect staged content and run a secret scanner. Do not commit generated logs or state. If a real credential is exposed, revoke/rotate it. Removing a file in a later commit does not erase earlier versions from Git history.
+Antes de cada commit, revisa los cambios y ejecuta un escáner de secretos. No publiques registros ni archivos de estado. Si se expone una credencial real, revócala o rótala. Eliminar un archivo en un commit posterior no elimina las versiones anteriores del historial de Git.
 
-## Recovery note
+## Principio de privacidad
 
-The original production script contained resource OCIDs inline. Those literal values are intentionally not reproduced here; configure the required identifiers directly on the target server. The original service stopped itself after detecting an existing instance, but the systemd unit remained enabled. Confirm the operational service is disabled independently; do not assume that script exit disables systemd.
+La configuración, las credenciales y los identificadores de cada instalación deben permanecer en el equipo del usuario. El proyecto no necesita publicar ni compartir esos datos para que el watcher funcione. Cualquier telemetría futura debe documentarse claramente, requerir una decisión explícita del usuario y estar desactivada por defecto.
