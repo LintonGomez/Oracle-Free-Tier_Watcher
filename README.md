@@ -61,6 +61,8 @@ No habilites la creación automática hasta completar las pruebas en modo de sim
 - config/watcher.env.example: ejemplo de configuración con marcadores de posición.
 - systemd/oracle-free-tier-watcher.service.example: ejemplo de servicio para Linux.
 - docs/CONFIGURATION.md: configuración local y medidas de seguridad.
+- docs/ARCHITECTURE.md: arquitectura local multiplataforma propuesta.
+- docs/INTERACTIVE-CLI.md: diseño de la terminal interactiva y el almacenamiento seguro.
 - docs/OPERATIONS.md: ejecución, verificación y parada.
 - tests/test-mocked-oci.sh: prueba local con respuestas OCI simuladas; no crea recursos.
 - .gitignore: exclusiones para archivos locales sensibles.
