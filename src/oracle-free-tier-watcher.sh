@@ -1,23 +1,16 @@
 #!/usr/bin/env bash
-# Sanitized public template for Oracle Free Tier Capacity Watcher.
-# Requires: bash, OCI CLI, jq, flock, timeout.
+# Oracle Free Tier Capacity Watcher — public, sanitized template.
+# Requirements: Bash 4+, OCI CLI, jq, flock, timeout, coreutils.
 set -Eeuo pipefail
+IFS=$'\n\t'
 umask 077
 
-: "${OCI_CLI:?Set OCI_CLI in the local environment file}"
-: "${OCI_CONFIG_FILE:?Set OCI_CONFIG_FILE in the local environment file}"
-: "${REGION:?Set REGION in the local environment file}"
-: "${COMPARTMENT_ID:?Set COMPARTMENT_ID locally}"
-: "${INSTANCE_NAME:?Set INSTANCE_NAME in the local environment file}"
-: "${SHAPE:?Set SHAPE in the local environment file}"
-: "${OCPUS:?Set OCPUS in the local environment file}"
-: "${MEMORY_GB:?Set MEMORY_GB in the local environment file}"
-: "${BOOT_GB:?Set BOOT_GB in the local environment file}"
-: "${IMAGE_ID:?Set IMAGE_ID locally}"
-: "${SUBNET_ID:?Set SUBNET_ID locally}"
-: "${SSH_PUBLIC_KEY_FILE:?Set SSH_PUBLIC_KEY_FILE locally}"
-: "${LOG_DIR:?Set LOG_DIR in the local environment file}"
-: "${STATE_DIR:?Set STATE_DIR in the local environment file}"
+die() { printf 'ERROR: %s\n' "$*" >&2; exit 2; }
+need() { [[ -n "${!1:-}" ]] || die "Required setting is missing: $1"; }
+
+for name in OCI_CLI OCI_CONFIG_FILE REGION COMPARTMENT_ID INSTANCE_NAME SHAPE OCPUS MEMORY_GB BOOT_GB IMAGE_ID SUBNET_ID SSH_PUBLIC_KEY_FILE LOG_DIR STATE_DIR; do
+  need "$name"
+done
 
 OCI_PROFILE="${OCI_PROFILE:-DEFAULT}"
 RETRY_BASE_SECONDS="${RETRY_BASE_SECONDS:-120}"
@@ -29,35 +22,48 @@ LAUNCH_TIMEOUT_SECONDS="${LAUNCH_TIMEOUT_SECONDS:-900}"
 DRY_RUN="${DRY_RUN:-true}"
 AVAILABILITY_DOMAINS="${AVAILABILITY_DOMAINS:-}"
 
-for binary in "$OCI_CLI" jq flock timeout; do
-  command -v "$binary" >/dev/null 2>&1 || {
-    printf 'Missing required command: %s\n' "$binary" >&2
-    exit 127
-  }
+# Fail closed: require absolute paths and regular readable/executable files.
+[[ "$OCI_CLI" == /* && -x "$OCI_CLI" ]] || die "OCI_CLI must be an absolute executable path"
+[[ "$OCI_CONFIG_FILE" == /* && -f "$OCI_CONFIG_FILE" && -r "$OCI_CONFIG_FILE" ]] || die "OCI_CONFIG_FILE must be an absolute readable regular file"
+[[ "$SSH_PUBLIC_KEY_FILE" == /* && -f "$SSH_PUBLIC_KEY_FILE" && -r "$SSH_PUBLIC_KEY_FILE" ]] || die "SSH_PUBLIC_KEY_FILE must be an absolute readable regular file"
+for path in "$OCI_CONFIG_FILE" "$SSH_PUBLIC_KEY_FILE"; do
+  [[ ! -L "$path" ]] || die "Symlinks are not allowed for sensitive configuration inputs"
 done
-[[ -r "$OCI_CONFIG_FILE" ]] || { echo "OCI config file is not readable" >&2; exit 2; }
-[[ -r "$SSH_PUBLIC_KEY_FILE" ]] || { echo "SSH public key is not readable" >&2; exit 2; }
-[[ "$OCPUS" =~ ^[0-9]+([.][0-9]+)?$ ]] || { echo "OCPUS must be numeric" >&2; exit 2; }
-[[ "$MEMORY_GB" =~ ^[0-9]+([.][0-9]+)?$ ]] || { echo "MEMORY_GB must be numeric" >&2; exit 2; }
-[[ "$BOOT_GB" =~ ^[0-9]+$ ]] || { echo "BOOT_GB must be an integer" >&2; exit 2; }
-[[ "$RETRY_BASE_SECONDS" =~ ^[0-9]+$ && "$RETRY_JITTER_SECONDS" =~ ^[0-9]+$ ]] || {
-  echo "Retry intervals must be non-negative integers" >&2; exit 2;
-}
-[[ "$DRY_RUN" == "true" || "$DRY_RUN" == "false" ]] || {
-  echo "DRY_RUN must be true or false" >&2; exit 2;
-}
-[[ "$REGION" != REPLACE_* && "$COMPARTMENT_ID" != *REPLACE* &&
-   "$IMAGE_ID" != *REPLACE* && "$SUBNET_ID" != *REPLACE* ]] || {
-  echo "Configuration still contains placeholders" >&2; exit 2;
-}
+[[ "$REGION" =~ ^[a-zA-Z0-9-]+$ ]] || die "Invalid REGION syntax"
+[[ "$COMPARTMENT_ID" =~ ^ocid1\.(tenancy|compartment)\.oc1\..+$ ]] || die "COMPARTMENT_ID must be a local tenancy/compartment OCID"
+[[ "$IMAGE_ID" =~ ^ocid1\.image\.oc1\..+$ ]] || die "IMAGE_ID must be a local image OCID"
+[[ "$SUBNET_ID" =~ ^ocid1\.subnet\.oc1\..+$ ]] || die "SUBNET_ID must be a local subnet OCID"
+[[ "$INSTANCE_NAME" =~ ^[a-zA-Z0-9._-]{1,100}$ ]] || die "INSTANCE_NAME contains unsupported characters"
+[[ "$SHAPE" =~ ^[a-zA-Z0-9._-]{1,100}$ ]] || die "Invalid SHAPE syntax"
+[[ "$OCPUS" =~ ^[0-9]+([.][0-9]+)?$ && "$MEMORY_GB" =~ ^[0-9]+([.][0-9]+)?$ ]] || die "OCPUS and MEMORY_GB must be numeric"
+[[ "$BOOT_GB" =~ ^[0-9]+$ ]] || die "BOOT_GB must be an integer"
+for name in RETRY_BASE_SECONDS RETRY_JITTER_SECONDS API_THROTTLE_BACKOFF_SECONDS CONFIG_ERROR_BACKOFF_SECONDS INSTANCE_LIST_ERROR_BACKOFF_SECONDS LAUNCH_TIMEOUT_SECONDS; do
+  [[ "${!name}" =~ ^[0-9]+$ ]] || die "$name must be a non-negative integer"
+done
+[[ "$RETRY_BASE_SECONDS" -ge 1 && "$LAUNCH_TIMEOUT_SECONDS" -ge 1 ]] || die "Retry base and launch timeout must be at least 1 second"
+[[ "$DRY_RUN" == "true" || "$DRY_RUN" == "false" ]] || die "DRY_RUN must be true or false"
+[[ "$REGION" != REPLACE_* && "$COMPARTMENT_ID" != *REPLACE* && "$IMAGE_ID" != *REPLACE* && "$SUBNET_ID" != *REPLACE* ]] || die "Configuration still contains placeholders"
 
-mkdir -p "$LOG_DIR" "$STATE_DIR"
-chmod 700 "$LOG_DIR" "$STATE_DIR"
+for binary in jq flock timeout; do command -v "$binary" >/dev/null 2>&1 || die "Missing required command: $binary"; done
+# The OCI CLI config may contain profile metadata and a path to a private key.
+# Enforce no group/world access when the GNU stat interface is available.
+if command -v stat >/dev/null 2>&1; then
+  mode=$(stat -c '%a' "$OCI_CONFIG_FILE" 2>/dev/null || true)
+  if [[ "$mode" =~ ^[0-7]{3,4}$ ]]; then
+    perms=$((8#$mode))
+    (( (perms & 077) == 0 )) || die "OCI config permissions are too broad; use chmod 600"
+  fi
+fi
+
+mkdir -p -- "$LOG_DIR" "$STATE_DIR"
+chmod 700 -- "$LOG_DIR" "$STATE_DIR"
 LOG_FILE="$LOG_DIR/watcher.log"
 STATE_FILE="$STATE_DIR/state"
 LOCK_FILE="$STATE_DIR/watcher.lock"
-
-log() { printf '%s %s\n' "$(date -Is)" "$*" | tee -a "$LOG_FILE"; }
+touch "$LOG_FILE"
+chmod 600 "$LOG_FILE"
+log() { printf '%s %s\n' "$(date -Is)" "$*" >> "$LOG_FILE"; }
+# Never log raw OCI CLI output, OCIDs, key paths, or credentials.
 
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then log "WATCHER_ALREADY_RUNNING"; exit 0; fi
@@ -65,84 +71,85 @@ if ! flock -n 9; then log "WATCHER_ALREADY_RUNNING"; exit 0; fi
 oci_cmd() {
   "$OCI_CLI" --config-file "$OCI_CONFIG_FILE" --profile "$OCI_PROFILE" "$@"
 }
+stop_successfully() {
+  local reason="$1"
+  log "$reason watcher_stopping=true"
+  printf '%s\n' "$reason" > "$STATE_FILE"
+  chmod 600 "$STATE_FILE"
+  exit 0
+}
 
 log "WATCHER_START region=$REGION shape=$SHAPE ocpus=$OCPUS memory_gb=$MEMORY_GB dry_run=$DRY_RUN"
 
-# Space-separated availability domain names are local config only. If none are
-# configured, use the first AD returned by OCI for this region.
 ADS=()
 if [[ -n "$AVAILABILITY_DOMAINS" ]]; then
   read -r -a ADS <<< "$AVAILABILITY_DOMAINS"
 else
-  AD_JSON=$(oci_cmd iam availability-domain list --compartment-id "$COMPARTMENT_ID" --region "$REGION" 2>>"$LOG_FILE") || {
-    log "AVAILABILITY_DOMAIN_LOOKUP_ERROR"; exit 1;
-  }
+  if ! AD_JSON=$(oci_cmd iam availability-domain list --compartment-id "$COMPARTMENT_ID" --region "$REGION" 2>/dev/null); then
+    log "AVAILABILITY_DOMAIN_LOOKUP_ERROR; inspect local OCI CLI configuration"
+    exit 1
+  fi
   mapfile -t ADS < <(printf '%s' "$AD_JSON" | jq -r '.data[]?.name')
+  unset AD_JSON
 fi
-if [[ ${#ADS[@]} -eq 0 ]]; then log "NO_AVAILABILITY_DOMAINS"; exit 1; fi
+[[ ${#ADS[@]} -gt 0 ]] || die "No availability domains were found or configured"
+for ad in "${ADS[@]}"; do [[ "$ad" =~ ^[a-zA-Z0-9._:-]+$ ]] || die "Invalid availability-domain syntax"; done
 AD_INDEX=0
 
 while true; do
-  if ! EXISTING=$(oci_cmd compute instance list --compartment-id "$COMPARTMENT_ID" --region "$REGION" \
-      --all --display-name "$INSTANCE_NAME" 2>&1); then
-    log "INSTANCE_LIST_ERROR"
-    # Do not write unredacted CLI output to a public log; logs remain local.
-    printf '%s\n' "$EXISTING" | tail -n 5 >> "$LOG_FILE"
+  if ! EXISTING=$(oci_cmd compute instance list --compartment-id "$COMPARTMENT_ID" --region "$REGION" --all --display-name "$INSTANCE_NAME" 2>/dev/null); then
+    log "INSTANCE_LIST_ERROR; retrying after backoff"
     sleep "$INSTANCE_LIST_ERROR_BACKOFF_SECONDS"
     continue
   fi
 
-  ID=$(printf '%s' "$EXISTING" | jq -r '.data[]? | select(."lifecycle-state" != "TERMINATED") | .id' | head -n1 || true)
-  if [[ -n "$ID" ]]; then
-    # Avoid printing OCIDs to logs or state files; this is a public project.
-    log "INSTANCE_EXISTS watcher_stopping=true"
-    printf 'INSTANCE_EXISTS\n' > "$STATE_FILE"
-    exit 0
+  # Any non-terminated instance with the target display name is treated as
+  # success. Never put its OCID into logs/state.
+  if printf '%s' "$EXISTING" | jq -e '.data[]? | select(."lifecycle-state" != "TERMINATED")' >/dev/null; then
+    unset EXISTING
+    stop_successfully "INSTANCE_EXISTS"
   fi
+  unset EXISTING
 
   AD="${ADS[$AD_INDEX]}"
   AD_INDEX=$(( (AD_INDEX + 1) % ${#ADS[@]} ))
   if [[ "$DRY_RUN" == "true" ]]; then
-    log "DRY_RUN_WOULD_LAUNCH ad_index=$((AD_INDEX + 1)) region=$REGION shape=$SHAPE"
+    log "DRY_RUN_WOULD_LAUNCH region=$REGION shape=$SHAPE"
   else
-    log "LAUNCH_ATTEMPT ad_index=$((AD_INDEX + 1)) region=$REGION shape=$SHAPE"
-    # Never log the full OCI response: it may include sensitive identifiers.
+    log "LAUNCH_ATTEMPT region=$REGION shape=$SHAPE"
+    # Never persist or print the raw response; it can contain infrastructure IDs.
     if LAUNCH_JSON=$(timeout "$LAUNCH_TIMEOUT_SECONDS" oci_cmd compute instance launch \
         --availability-domain "$AD" --compartment-id "$COMPARTMENT_ID" \
         --display-name "$INSTANCE_NAME" --shape "$SHAPE" \
         --shape-config "{\"ocpus\":$OCPUS,\"memoryInGBs\":$MEMORY_GB}" \
         --subnet-id "$SUBNET_ID" --assign-public-ip true --image-id "$IMAGE_ID" \
         --boot-volume-size-in-gbs "$BOOT_GB" --ssh-authorized-keys-file "$SSH_PUBLIC_KEY_FILE" \
-        --region "$REGION" --wait-for-state RUNNING --max-wait-seconds "$LAUNCH_TIMEOUT_SECONDS" 2>&1); then
-      ID=$(printf '%s' "$LAUNCH_JSON" | jq -r '.data.id // empty' 2>/dev/null || true)
-      if [[ -n "$ID" ]]; then
-        # An accepted create request is success: stop immediately and do not
-        # issue a second launch. Keep the OCID out of logs/state files.
-        log "INSTANCE_CREATED watcher_stopping=true"
-        printf 'INSTANCE_CREATED\n' > "$STATE_FILE"
-        exit 0
-      fi
-      log "LAUNCH_SUCCESS_WITHOUT_PARSEABLE_ID verify_on_next_cycle=true"
+        --region "$REGION" --wait-for-state RUNNING --max-wait-seconds "$LAUNCH_TIMEOUT_SECONDS" 2>/dev/null); then
+      # Any successful launch API response is terminal, even if its JSON is
+      # unexpected. This avoids duplicate launches after an accepted request.
+      unset LAUNCH_JSON
+      stop_successfully "INSTANCE_CREATE_ACCEPTED"
     else
       RC=$?
-      if grep -Eqi 'out.of.host.capacity|out of host capacity|OutOfHostCapacity' <<<"$LAUNCH_JSON"; then
+      if grep -Eqi 'out.of.host.capacity|out of host capacity|OutOfHostCapacity' <<<"${LAUNCH_JSON:-}"; then
         log "OUT_OF_HOST_CAPACITY"
-      elif grep -Eqi 'TooManyRequests|429|throttl' <<<"$LAUNCH_JSON"; then
+      elif grep -Eqi 'TooManyRequests|429|throttl' <<<"${LAUNCH_JSON:-}"; then
+        unset LAUNCH_JSON
         log "API_THROTTLED backoff_seconds=$API_THROTTLE_BACKOFF_SECONDS"
         sleep "$API_THROTTLE_BACKOFF_SECONDS"
         continue
-      elif grep -Eqi 'NotAuthenticated|NotAuthorized|InvalidParameter|LimitExceeded|QuotaExceeded|InvalidConfiguration|Invalid image|Subnet.*not found' <<<"$LAUNCH_JSON"; then
+      elif grep -Eqi 'NotAuthenticated|NotAuthorized|InvalidParameter|LimitExceeded|QuotaExceeded|InvalidConfiguration|Invalid image|Subnet.*not found' <<<"${LAUNCH_JSON:-}"; then
+        unset LAUNCH_JSON
         log "CONFIG_OR_PERMISSION_ERROR manual_review_required=true"
         sleep "$CONFIG_ERROR_BACKOFF_SECONDS"
         continue
       else
-        log "LAUNCH_ERROR exit_code=$RC"
+        log "LAUNCH_ERROR exit_code=$RC; raw response suppressed"
       fi
-      # Do not log raw OCI error output; it may contain resource details.
+      unset LAUNCH_JSON
     fi
   fi
 
-  # Bounded retry interval with jitter.
   WAIT=$(( RETRY_BASE_SECONDS + RANDOM % (RETRY_JITTER_SECONDS + 1) ))
   log "RETRY_SLEEP seconds=$WAIT"
   sleep "$WAIT"
