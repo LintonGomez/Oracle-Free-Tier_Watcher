@@ -42,7 +42,7 @@ La versión saneada mantiene estas ideas en una configuración explícita, y evi
 
 No actives reintentos automáticos hasta verificar región, cuotas, costos, permisos y comportamiento de parada. El script debe detenerse cuando ya exista una instancia objetivo.
 
-## Archivos
+## Hardening aplicado\n\n- Validación estricta de rutas, valores y placeholders antes de operar.\n- Requiere clave privada OCI local, con permisos restrictivos; no imprime OCID ni respuestas crudas de OCI en logs.\n- Logs/estado con permisos restrictivos y lock contra ejecuciones simultáneas.\n- `DRY_RUN=true` por defecto y salida inmediata cuando detecta una instancia o la llamada de creación es aceptada.\n- Ejemplo de systemd con usuario dedicado, sandboxing, capacidades vacías y sin reinicio automático.\n- CI con `bash -n`, ShellCheck y detección básica de secretos/OCID en archivos versionados.\n\nEstos controles reducen riesgos, pero no equivalen a una auditoría de seguridad formal ni sustituyen pruebas de integración en OCI.\n\n## Archivos
 
 - `src/oracle-free-tier-watcher.sh`: script saneado y parametrizado.
 - `config/watcher.env.example`: nombres de variables y valores de ejemplo no utilizables en producción.
