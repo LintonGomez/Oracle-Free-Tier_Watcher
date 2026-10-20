@@ -62,6 +62,7 @@ No habilites la creación automática hasta completar las pruebas en modo de sim
 - systemd/oracle-free-tier-watcher.service.example: ejemplo de servicio para Linux.
 - docs/CONFIGURATION.md: configuración local y medidas de seguridad.
 - docs/OPERATIONS.md: ejecución, verificación y parada.
+- tests/test-mocked-oci.sh: prueba local con respuestas OCI simuladas; no crea recursos.
 - .gitignore: exclusiones para archivos locales sensibles.
 
 ## Licencia
