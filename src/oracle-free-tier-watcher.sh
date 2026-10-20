@@ -29,6 +29,35 @@ AVAILABILITY_DOMAINS="${AVAILABILITY_DOMAINS:-}"
 for path in "$OCI_CONFIG_FILE" "$SSH_PUBLIC_KEY_FILE"; do
   [[ ! -L "$path" ]] || die "Symlinks are not allowed for sensitive configuration inputs"
 done
+[[ "$OCI_PROFILE" =~ ^[a-zA-Z0-9_-]+$ ]] || die "Invalid OCI_PROFILE syntax"
+
+# Require an explicit absolute private-key path in the selected OCI profile.
+# Do not print the path or contents. ProtectHome=true in the unit means this
+# key should live under /etc/oracle-free-tier-watcher, not under a home folder.
+KEY_FILE=$(awk -v profile="$OCI_PROFILE" '
+  /^[[:space:]]*#/ { next }
+  /^[[:space:]]*\\[/ {
+    section=$0
+    gsub(/^[[:space:]]*\\[|\\][[:space:]]*$/, "", section)
+    active=(section == profile)
+    next
+  }
+  active && /^[[:space:]]*key_file[[:space:]]*=/ {
+    sub(/^[^=]*=[[:space:]]*/, "")
+    gsub(/[[:space:]]+$/, "")
+    print
+    exit
+  }
+' "$OCI_CONFIG_FILE")
+[[ "$KEY_FILE" == /* && -f "$KEY_FILE" && -r "$KEY_FILE" && ! -L "$KEY_FILE" ]] || die "Selected OCI profile must reference an absolute, readable, non-symlink key_file"
+if command -v stat >/dev/null 2>&1; then
+  key_mode=$(stat -c '%a' "$KEY_FILE" 2>/dev/null || true)
+  if [[ "$key_mode" =~ ^[0-7]{3,4}$ ]]; then
+    key_perms=$((8#$key_mode))
+    (( (key_perms & 077) == 0 )) || die "OCI private key permissions are too broad; use chmod 600"
+  fi
+fi
+unset KEY_FILE
 [[ "$REGION" =~ ^[a-zA-Z0-9-]+$ ]] || die "Invalid REGION syntax"
 [[ "$COMPARTMENT_ID" =~ ^ocid1\.(tenancy|compartment)\.oc1\..+$ ]] || die "COMPARTMENT_ID must be a local tenancy/compartment OCID"
 [[ "$IMAGE_ID" =~ ^ocid1\.image\.oc1\..+$ ]] || die "IMAGE_ID must be a local image OCID"
