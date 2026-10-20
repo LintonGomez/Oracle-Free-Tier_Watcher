@@ -2,6 +2,7 @@
 Description=Oracle Free Tier Capacity Watcher
 Wants=network-online.target
 After=network-online.target
+ConditionPathExists=/etc/oracle-free-tier-watcher/watcher.env
 
 [Service]
 Type=oneshot
@@ -12,11 +13,26 @@ ExecStart=/opt/oracle-free-tier-watcher/src/oracle-free-tier-watcher.sh
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# This watcher intentionally runs until success/manual stop; no implicit restart.
+TimeoutStartSec=infinity
+Restart=no
 ReadWritePaths=/var/log/oracle-free-tier-watcher /var/lib/oracle-free-tier-watcher
-# This unit is an example only. Validate CLI/key access and filesystem permissions
-# before use; do not enable it blindly.
 
 [Install]
 WantedBy=multi-user.target
