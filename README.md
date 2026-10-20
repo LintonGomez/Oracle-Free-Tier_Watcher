@@ -1,56 +1,69 @@
 # Oracle Free Tier Watcher
 
-Herramienta para vigilar la disponibilidad de capacidad de Oracle Cloud Infrastructure (OCI) y, cuando está explícitamente configurada, intentar crear una instancia Free Tier. La implementación se basa en el mecanismo recuperado de un servidor de operación, pero este repositorio solo contiene una plantilla saneada y parametrizada.
+Oracle Free Tier Watcher es un proyecto de software cuyo objetivo es comprobar periódicamente la disponibilidad de capacidad en Oracle Cloud Infrastructure (OCI) y, cuando la configuración del usuario lo autorice, intentar crear una instancia que cumpla los parámetros definidos.
 
-> **Seguridad:** este repositorio es público. No publiques credenciales OCI, claves privadas, tokens, OCID de tenancy/compartment/subnet/imagen/instancia, direcciones IP privadas ni logs de producción. Los identificadores operativos deben permanecer en configuración local no versionada. Si un secreto se publica accidentalmente, elimínalo del repositorio y rota/revoca la credencial; borrar el archivo de un commit no lo elimina del historial.
+La meta del proyecto es ofrecer una herramienta instalable en **Windows y Linux**, ejecutada como servicio en segundo plano. Mientras el equipo esté encendido y tenga conexión a Internet, el servicio podrá realizar comprobaciones automáticas con OCI, respetando los intervalos de espera, los límites de reintento y las condiciones de parada configuradas. La disponibilidad de capacidad no está garantizada: Oracle puede no disponer de recursos, y las cuotas, la región, la elegibilidad Free Tier y las políticas de la cuenta condicionan el resultado.
 
-## Estado
+## Estado del proyecto
 
-- Repositorio inicializado con estructura pública saneada.
-- La plantilla no está lista para desplegarse sin configurar y validar los recursos específicos de tu tenancy.
-- La instancia de producción existente no se modifica por este repositorio.
-- El servicio de systemd en producción debe administrarse por separado; que el script termine al detectar una instancia existente no sustituye deshabilitar su arranque automático.
+**En desarrollo. No hay todavía un instalador multiplataforma listo para uso general.**
 
-## Mecanismo recuperado
+El repositorio contiene una implementación inicial en Bash orientada a Linux y archivos de ejemplo para configuración, operación y endurecimiento. Todavía hacen falta el componente equivalente para Windows, la integración como servicio en ambos sistemas, pruebas automatizadas y de integración, y un procedimiento de instalación y actualización validado.
 
-La implementación original empleaba:
-- OCI CLI en una máquina Linux.
-- Una consulta previa para encontrar una instancia existente con el nombre configurado.
-- Shape `VM.Standard.A1.Flex`, región y parámetros de computación configurados explícitamente.
-- Reintentos con pausa y jitter, rotación de dominios de disponibilidad.
-- Backoff ante throttling y pausas más largas ante errores que requieren intervención.
-- Registro de estado y un lock para evitar ejecuciones concurrentes.
-- Salida inmediata cuando encuentra una instancia existente o la API confirma la creación de la instancia; no inicia otro intento después del éxito.
+Por eso, por ahora, no se debe interpretar este repositorio como un instalador de un clic ni ejecutar la plantilla contra una cuenta de OCI sin revisar y probar cada parámetro.
 
-La versión saneada mantiene estas ideas en una configuración explícita, y evita incrustar OCID en el código. Antes de producción requiere pruebas en un entorno controlado.
+## Cómo funcionará
 
-## Requisitos
+1. El usuario instala y configura el watcher en su propio equipo.
+2. El usuario proporciona localmente su configuración de OCI y los parámetros de la instancia que desea intentar crear.
+3. El servicio espera a que el equipo esté encendido y tenga conexión a Internet.
+4. El watcher consulta OCI de forma periódica, con pausas y reintentos limitados para evitar llamadas excesivas.
+5. Antes de intentar crear recursos, comprueba si ya existe una instancia que coincida con el criterio configurado.
+6. Si detecta la instancia objetivo o confirma que una solicitud de creación fue aceptada, deja de intentar crear otra. Los errores de configuración, autenticación, permisos o cuotas deben tratarse de forma segura, sin ciclos de llamadas agresivos.
 
-- Linux con Bash, `oci`, `jq`, `flock` y `timeout`.
-- OCI CLI autenticada con una configuración local de acceso limitado.
-- Permisos OCI mínimos necesarios para listar instancias y lanzar una instancia en el compartment elegido.
-- Configuración local con los identificadores correctos de tenancy/compartment, imagen, subnet y clave pública SSH.
+El comportamiento final —incluidos el intervalo de comprobación, la estrategia de reintentos, la selección de región y los criterios para reconocer una instancia— se documentará y probará antes de publicar instaladores estables.
 
-## Uso
+## Privacidad y seguridad
 
-1. Revisa `docs/CONFIGURATION.md`.
-2. Copia `config/watcher.env.example` a una ruta local como `/etc/oracle-free-tier-watcher/watcher.env` (no a Git).
-3. Sustituye todos los valores de ejemplo por los valores correctos de tu entorno.
-4. Protege el archivo con propietario administrativo y permisos `0600`.
-5. Ejecuta primero en modo de validación sin lanzamiento de recursos y revisa los logs.
-6. Instala el servicio solo después de completar las pruebas. La plantilla de systemd está en `systemd/oracle-free-tier-watcher.service.example`.
+Este proyecto está diseñado para mantener la configuración de cada usuario en su propio equipo. **No se deben incluir credenciales ni datos de cuentas en el repositorio.**
 
-No actives reintentos automáticos hasta verificar región, cuotas, costos, permisos y comportamiento de parada. El script debe detenerse cuando ya exista una instancia objetivo.
+- Las claves privadas, tokens, archivos de configuración OCI, OCID, registros y datos de infraestructura deben permanecer localmente y fuera del control de versiones.
+- No se deben enviar credenciales a un servicio central del proyecto. Cualquier futura función de telemetría deberá ser explícita, documentada y desactivada por defecto.
+- Los ejemplos publicados deben usar únicamente valores ficticios y marcadores de posición.
+- Los registros deben evitar secretos, respuestas completas de la API y detalles de infraestructura que no sean necesarios para diagnosticar el problema.
+- La herramienta debe usar permisos mínimos, configuración protegida, reintentos acotados y mecanismos para impedir ejecuciones concurrentes.
+- El usuario debe revisar las condiciones de Oracle Cloud, la elegibilidad Free Tier, las cuotas y los posibles cargos antes de habilitar la creación automática de recursos.
 
-## Hardening aplicado\n\n- Validación estricta de rutas, valores y placeholders antes de operar.\n- Requiere clave privada OCI local, con permisos restrictivos; no imprime OCID ni respuestas crudas de OCI en logs.\n- Logs/estado con permisos restrictivos y lock contra ejecuciones simultáneas.\n- `DRY_RUN=true` por defecto y salida inmediata cuando detecta una instancia o la llamada de creación es aceptada.\n- Ejemplo de systemd con usuario dedicado, sandboxing, capacidades vacías y sin reinicio automático.\n- CI con `bash -n`, ShellCheck y detección básica de secretos/OCID en archivos versionados.\n\nEstos controles reducen riesgos, pero no equivalen a una auditoría de seguridad formal ni sustituyen pruebas de integración en OCI.\n\n## Archivos
+No publiques credenciales, claves, tokens, OCID reales, direcciones IP, registros operativos ni archivos de configuración. Si se expone una credencial, revócala o rótala; borrar el archivo en un commit posterior no elimina necesariamente el dato del historial de Git.
 
-- `src/oracle-free-tier-watcher.sh`: script saneado y parametrizado.
-- `config/watcher.env.example`: nombres de variables y valores de ejemplo no utilizables en producción.
-- `systemd/oracle-free-tier-watcher.service.example`: ejemplo de unidad systemd.
-- `docs/CONFIGURATION.md`: configuración, seguridad y operación.
-- `docs/OPERATIONS.md`: ejecución, verificación y parada.
-- `.gitignore`: excluye configuración local, logs, estados y credenciales.
+## Requisitos actuales de la implementación preliminar
+
+La implementación Bash disponible está orientada a Linux y requiere Bash, OCI CLI, jq, flock y timeout. También necesita una configuración OCI local con los permisos mínimos necesarios y los parámetros válidos de la instancia.
+
+Estos requisitos **no representan aún los requisitos de una futura versión para Windows**. La compatibilidad con Windows, la instalación como servicio y la puesta en marcha guiada se publicarán cuando estén implementadas y verificadas.
+
+## Instalación
+
+**El instalador todavía no está disponible.** No hay un procedimiento de instalación multiplataforma estable que podamos recomendar por ahora.
+
+Mientras el proyecto esté en desarrollo, consulta los ejemplos y documentos antes de ejecutar la implementación preliminar:
+
+- [Configuración y seguridad](docs/CONFIGURATION.md)
+- [Operación y ciclo de vida](docs/OPERATIONS.md)
+- [Ejemplo de configuración](config/watcher.env.example)
+- [Ejemplo de servicio systemd para Linux](systemd/oracle-free-tier-watcher.service.example)
+
+No habilites la creación automática hasta completar las pruebas en modo de simulación, verificar permisos y parámetros y confirmar los posibles costos. Los archivos de ejemplo no son un instalador ni una configuración lista para producción.
+
+## Archivos principales
+
+- src/oracle-free-tier-watcher.sh: implementación preliminar para Linux.
+- config/watcher.env.example: ejemplo de configuración con marcadores de posición.
+- systemd/oracle-free-tier-watcher.service.example: ejemplo de servicio para Linux.
+- docs/CONFIGURATION.md: configuración local y medidas de seguridad.
+- docs/OPERATIONS.md: ejecución, verificación y parada.
+- .gitignore: exclusiones para archivos locales sensibles.
 
 ## Licencia
 
-Pendiente de definir por el propietario del repositorio.
+Pendiente de definir.
