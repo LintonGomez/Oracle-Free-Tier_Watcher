@@ -124,8 +124,6 @@ else
 fi
 [[ ${#ADS[@]} -gt 0 ]] || die "No availability domains were found or configured"
 for ad in "${ADS[@]}"; do [[ "$ad" =~ ^[a-zA-Z0-9._:-]+$ ]] || die "Invalid availability-domain syntax"; done
-AD_INDEX=0
-
 while true; do
   if ! EXISTING=$(oci_cmd compute instance list --compartment-id "$COMPARTMENT_ID" --region "$REGION" --all --display-name "$INSTANCE_NAME" 2>/dev/null); then
     log "INSTANCE_LIST_ERROR; retrying after backoff"
@@ -155,7 +153,7 @@ while true; do
   FOUND_AD=""
   CAPACITY_ERROR=false
   for AD in "${ADS[@]}"; do
-    if CAPACITY_JSON=$(timeout "$CAPACITY_CHECK_TIMEOUT_SECONDS" oci_cmd compute compute-capacity-report create \
+    if CAPACITY_JSON=$(timeout "$CAPACITY_CHECK_TIMEOUT_SECONDS" "$OCI_CLI" --config-file "$OCI_CONFIG_FILE" --profile "$OCI_PROFILE" compute compute-capacity-report create \
         --availability-domain "$AD" --compartment-id "$COMPARTMENT_ID" \
         --shape-availabilities "[{\"instanceShape\":\"$SHAPE\",\"instanceShapeConfig\":{\"ocpus\":$OCPUS,\"memoryInGBs\":$MEMORY_GB}}]" \
         --region "$REGION" 2>&1); then
@@ -192,13 +190,12 @@ while true; do
     continue
   fi
 
-  log "CAPACITY_CONFIRMED ad_index=$((AD_INDEX + 1)); attempting launch"
-  AD_INDEX=$(( (AD_INDEX + 1) % ${#ADS[@]} ))
+  log "CAPACITY_CONFIRMED; attempting launch"
   if [[ "$DRY_RUN" == "true" ]]; then
     log "DRY_RUN_WOULD_LAUNCH region=$REGION shape=$SHAPE"
   else
     log "LAUNCH_ATTEMPT region=$REGION shape=$SHAPE"
-    if LAUNCH_JSON=$(timeout "$LAUNCH_TIMEOUT_SECONDS" oci_cmd compute instance launch \
+    if LAUNCH_JSON=$(timeout "$LAUNCH_TIMEOUT_SECONDS" "$OCI_CLI" --config-file "$OCI_CONFIG_FILE" --profile "$OCI_PROFILE" compute instance launch \
         --availability-domain "$FOUND_AD" --compartment-id "$COMPARTMENT_ID" \
         --display-name "$INSTANCE_NAME" --shape "$SHAPE" \
         --shape-config "{\"ocpus\":$OCPUS,\"memoryInGBs\":$MEMORY_GB}" \
