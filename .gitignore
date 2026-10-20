@@ -1,0 +1,27 @@
+# Local secrets / OCI configuration
+*.pem
+*.key
+*.pub
+*.env
+!.env.example
+config/watcher.env
+config/*.local
+.oci/
+.ssh/
+
+# Runtime artifacts
+*.log
+*.lock
+state
+*.state
+run/
+logs/
+
+# Python / editor artifacts
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.DS_Store
+.vscode/
+.idea/
