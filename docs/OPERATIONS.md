@@ -25,7 +25,7 @@ Stop now and prevent automatic starts:
 sudo systemctl disable --now oracle-free-tier-watcher.service
 ```
 
-Verify the results. Expected output is `disabled` and `inactive`. Also check for a systemd timer or other scheduler separately if one was installed.
+Verify the results. Expected output is `disabled` and `inactive`. Also check for a systemd timer or other scheduler separately if one was installed. The example unit is sandboxed and does not auto-restart; a separate timer must be reviewed explicitly before enabling it.
 
 ## Logs and state
 
@@ -33,4 +33,4 @@ Keep logs and runtime state outside the checkout, with restrictive filesystem pe
 
 ## Failure handling
 
-Transient capacity errors may be retried with bounded backoff. Authentication, authorization, quota, invalid configuration, missing resources, and throttling errors should not lead to rapid repeated launch calls. Review logs privately and correct the underlying cause before enabling retries.
+Transient capacity errors may be retried with bounded backoff. Authentication, authorization, quota, invalid configuration, missing resources, and throttling errors should not lead to rapid repeated launch calls. Review logs privately and correct the underlying cause before enabling retries. The watcher intentionally suppresses raw OCI CLI responses because they can contain resource identifiers; diagnose OCI failures locally and never paste unredacted output into public issues. Malformed instance-list JSON causes a fail-closed backoff rather than a launch attempt.
