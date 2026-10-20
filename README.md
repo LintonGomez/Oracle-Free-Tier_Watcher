@@ -62,6 +62,7 @@ No habilites la creación automática hasta completar las pruebas en modo de sim
 - systemd/oracle-free-tier-watcher.service.example: ejemplo de servicio para Linux.
 - docs/CONFIGURATION.md: configuración local y medidas de seguridad.
 - docs/ARCHITECTURE.md: arquitectura local multiplataforma propuesta.
+- docs/ENGINE-CONTRACT.md: contrato del motor, estados y reglas de seguridad.
 - docs/STATIC-REVIEW.md: hallazgos estáticos y validaciones pendientes.
 - docs/INTERACTIVE-CLI.md: diseño de la terminal interactiva y el almacenamiento seguro.
 - docs/OPERATIONS.md: ejecución, verificación y parada.
