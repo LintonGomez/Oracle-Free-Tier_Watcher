@@ -16,6 +16,7 @@ OCI_PROFILE="${OCI_PROFILE:-DEFAULT}"
 RETRY_BASE_SECONDS="${RETRY_BASE_SECONDS:-120}"
 RETRY_JITTER_SECONDS="${RETRY_JITTER_SECONDS:-30}"
 API_THROTTLE_BACKOFF_SECONDS="${API_THROTTLE_BACKOFF_SECONDS:-600}"
+CAPACITY_CHECK_TIMEOUT_SECONDS="${CAPACITY_CHECK_TIMEOUT_SECONDS:-60}"
 CONFIG_ERROR_BACKOFF_SECONDS="${CONFIG_ERROR_BACKOFF_SECONDS:-1800}"
 INSTANCE_LIST_ERROR_BACKOFF_SECONDS="${INSTANCE_LIST_ERROR_BACKOFF_SECONDS:-300}"
 LAUNCH_TIMEOUT_SECONDS="${LAUNCH_TIMEOUT_SECONDS:-900}"
@@ -66,10 +67,10 @@ unset KEY_FILE
 [[ "$SHAPE" =~ ^[a-zA-Z0-9._-]{1,100}$ ]] || die "Invalid SHAPE syntax"
 [[ "$OCPUS" =~ ^[0-9]+([.][0-9]+)?$ && "$MEMORY_GB" =~ ^[0-9]+([.][0-9]+)?$ ]] || die "OCPUS and MEMORY_GB must be numeric"
 [[ "$BOOT_GB" =~ ^[0-9]+$ ]] || die "BOOT_GB must be an integer"
-for name in RETRY_BASE_SECONDS RETRY_JITTER_SECONDS API_THROTTLE_BACKOFF_SECONDS CONFIG_ERROR_BACKOFF_SECONDS INSTANCE_LIST_ERROR_BACKOFF_SECONDS LAUNCH_TIMEOUT_SECONDS; do
+for name in RETRY_BASE_SECONDS RETRY_JITTER_SECONDS API_THROTTLE_BACKOFF_SECONDS CAPACITY_CHECK_TIMEOUT_SECONDS CONFIG_ERROR_BACKOFF_SECONDS INSTANCE_LIST_ERROR_BACKOFF_SECONDS LAUNCH_TIMEOUT_SECONDS; do
   [[ "${!name}" =~ ^[0-9]+$ ]] || die "$name must be a non-negative integer"
 done
-[[ "$RETRY_BASE_SECONDS" -ge 1 && "$LAUNCH_TIMEOUT_SECONDS" -ge 1 ]] || die "Retry base and launch timeout must be at least 1 second"
+[[ "$RETRY_BASE_SECONDS" -ge 1 && "$LAUNCH_TIMEOUT_SECONDS" -ge 1 && "$CAPACITY_CHECK_TIMEOUT_SECONDS" -ge 1 ]] || die "Retry base, capacity timeout, and launch timeout must be at least 1 second"
 [[ "$DRY_RUN" == "true" || "$DRY_RUN" == "false" ]] || die "DRY_RUN must be true or false"
 [[ "$REGION" != REPLACE_* && "$COMPARTMENT_ID" != *REPLACE* && "$IMAGE_ID" != *REPLACE* && "$SUBNET_ID" != *REPLACE* ]] || die "Configuration still contains placeholders"
 
@@ -148,22 +149,62 @@ while true; do
   fi
   unset EXISTING
 
-  AD="${ADS[$AD_INDEX]}"
+  # Reproduce the proven capacity-first procedure: query each configured AD
+  # and launch only when OCI explicitly reports AVAILABLE. Never log raw API
+  # output; it may contain OCIDs and infrastructure metadata.
+  FOUND_AD=""
+  CAPACITY_ERROR=false
+  for AD in "${ADS[@]}"; do
+    if CAPACITY_JSON=$(timeout "$CAPACITY_CHECK_TIMEOUT_SECONDS" oci_cmd compute compute-capacity-report create \
+        --availability-domain "$AD" --compartment-id "$COMPARTMENT_ID" \
+        --shape-availabilities "[{\"instanceShape\":\"$SHAPE\",\"instanceShapeConfig\":{\"ocpus\":$OCPUS,\"memoryInGBs\":$MEMORY_GB}}]" \
+        --region "$REGION" 2>&1); then
+      STATUS=$(printf '%s' "$CAPACITY_JSON" | jq -r '.data["shape-availabilities"][0]["availability-status"] // "UNKNOWN"' 2>/dev/null || printf 'UNKNOWN')
+      unset CAPACITY_JSON
+      if [[ "$STATUS" == "AVAILABLE" ]]; then
+        FOUND_AD="$AD"
+        break
+      fi
+    else
+      RC=$?
+      if grep -Eqi 'TooManyRequests|429|throttl' <<<"${CAPACITY_JSON:-}"; then
+        unset CAPACITY_JSON
+        log "CAPACITY_API_THROTTLED backoff_seconds=$API_THROTTLE_BACKOFF_SECONDS"
+        sleep "$API_THROTTLE_BACKOFF_SECONDS"
+        CAPACITY_ERROR=true
+        break
+      fi
+      unset CAPACITY_JSON
+      CAPACITY_ERROR=true
+      log "CAPACITY_CHECK_ERROR exit_code=$RC; raw response suppressed"
+    fi
+  done
+
+  if [[ -z "$FOUND_AD" ]]; then
+    if [[ "$CAPACITY_ERROR" == "true" ]]; then
+      WAIT="$INSTANCE_LIST_ERROR_BACKOFF_SECONDS"
+      log "CAPACITY_UNCONFIRMED retry_seconds=$WAIT"
+    else
+      WAIT=$(( RETRY_BASE_SECONDS + RANDOM % (RETRY_JITTER_SECONDS + 1) ))
+      log "NO_CAPACITY retry_seconds=$WAIT"
+    fi
+    sleep "$WAIT"
+    continue
+  fi
+
+  log "CAPACITY_CONFIRMED ad_index=$((AD_INDEX + 1)); attempting launch"
   AD_INDEX=$(( (AD_INDEX + 1) % ${#ADS[@]} ))
   if [[ "$DRY_RUN" == "true" ]]; then
     log "DRY_RUN_WOULD_LAUNCH region=$REGION shape=$SHAPE"
   else
     log "LAUNCH_ATTEMPT region=$REGION shape=$SHAPE"
-    # Never persist or print the raw response; it can contain infrastructure IDs.
     if LAUNCH_JSON=$(timeout "$LAUNCH_TIMEOUT_SECONDS" oci_cmd compute instance launch \
-        --availability-domain "$AD" --compartment-id "$COMPARTMENT_ID" \
+        --availability-domain "$FOUND_AD" --compartment-id "$COMPARTMENT_ID" \
         --display-name "$INSTANCE_NAME" --shape "$SHAPE" \
         --shape-config "{\"ocpus\":$OCPUS,\"memoryInGBs\":$MEMORY_GB}" \
         --subnet-id "$SUBNET_ID" --assign-public-ip true --image-id "$IMAGE_ID" \
         --boot-volume-size-in-gbs "$BOOT_GB" --ssh-authorized-keys-file "$SSH_PUBLIC_KEY_FILE" \
         --region "$REGION" --wait-for-state RUNNING --max-wait-seconds "$LAUNCH_TIMEOUT_SECONDS" 2>&1); then
-      # Any successful launch API response is terminal, even if its JSON is
-      # unexpected. This avoids duplicate launches after an accepted request.
       unset LAUNCH_JSON
       stop_successfully "INSTANCE_CREATE_ACCEPTED"
     else
