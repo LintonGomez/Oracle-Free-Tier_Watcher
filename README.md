@@ -17,9 +17,9 @@ Por eso, por ahora, no se debe interpretar este repositorio como un instalador d
 1. El usuario instala y configura el watcher en su propio equipo.
 2. El usuario proporciona localmente su configuración de OCI y los parámetros de la instancia que desea intentar crear.
 3. El servicio espera a que el equipo esté encendido y tenga conexión a Internet.
-4. El watcher consulta OCI de forma periódica, con pausas y reintentos limitados para evitar llamadas excesivas.
-5. Antes de intentar crear recursos, comprueba si ya existe una instancia que coincida con el criterio configurado.
-6. Si detecta la instancia objetivo o confirma que una solicitud de creación fue aceptada, deja de intentar crear otra. Los errores de configuración, autenticación, permisos o cuotas deben tratarse de forma segura, sin ciclos de llamadas agresivos.
+4. El watcher comprueba primero si ya existe una instancia que coincida con el criterio configurado.
+5. Consulta el informe de capacidad de OCI para los dominios de disponibilidad configurados y solo intenta crear la instancia cuando OCI devuelve explícitamente el estado `AVAILABLE` para la forma de cómputo solicitada.
+6. Si no hay capacidad confirmada, espera y vuelve a comprobar con intervalos controlados. Si detecta la instancia objetivo o la solicitud de creación es aceptada, detiene los intentos para evitar duplicados. Los errores de configuración, autenticación, permisos, cuotas o API se gestionan con pausas y sin ciclos agresivos.
 
 El comportamiento final —incluidos el intervalo de comprobación, la estrategia de reintentos, la selección de región y los criterios para reconocer una instancia— se documentará y probará antes de publicar instaladores estables.
 
