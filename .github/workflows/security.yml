@@ -36,7 +36,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -RInE --exclude-dir=.git --exclude='*.md'             '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|ocid1\.(tenancy|instance|subnet|image|vcn|volume|user)\.oc1\.[a-zA-Z0-9._-]{20,}|-----BEGIN.*PRIVATE KEY-----|AKIA[0-9A-Z]{16})' .; then
+          if grep -RInE --exclude-dir=.git --exclude='*.md'             '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|ocid1\.(tenancy|compartment|instance|subnet|image|vcn|volume|user)\.oc1\.[a-zA-Z0-9._-]{20,}|-----BEGIN.*PRIVATE KEY-----|AKIA[0-9A-Z]{16})' .; then
             echo "Potential secret or real OCI identifier found in tracked files." >&2
             exit 1
           fi
