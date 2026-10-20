@@ -5,7 +5,7 @@
 1. Verifica el equipo de destino, la ruta de OCI CLI, el perfil y archivo de configuración local, la región, el compartment, la imagen, la subnet, la clave pública SSH y la forma de cómputo.
 2. Comprueba que el criterio de nombre o identificación no coincida con una instancia distinta que quieras conservar.
 3. Confirma cuotas, elegibilidad Free Tier y posibles cargos.
-4. Empieza con el modo de simulación y revisa los registros localmente.
+4. Empieza con el modo de simulación y revisa los registros localmente. La implementación consulta primero el informe de capacidad de OCI para cada dominio configurado y solo intenta lanzar cuando recibe el estado explícito AVAILABLE.
 
 ## Ciclo de vida del servicio
 
