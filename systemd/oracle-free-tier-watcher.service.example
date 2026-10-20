@@ -1,0 +1,22 @@
+[Unit]
+Description=Oracle Free Tier Capacity Watcher
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=oracle-watcher
+Group=oracle-watcher
+EnvironmentFile=/etc/oracle-free-tier-watcher/watcher.env
+ExecStart=/opt/oracle-free-tier-watcher/src/oracle-free-tier-watcher.sh
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/oracle-free-tier-watcher /var/lib/oracle-free-tier-watcher
+# This unit is an example only. Validate CLI/key access and filesystem permissions
+# before use; do not enable it blindly.
+
+[Install]
+WantedBy=multi-user.target
