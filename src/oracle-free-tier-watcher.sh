@@ -83,7 +83,7 @@ log "WATCHER_START region=$REGION shape=$SHAPE ocpus=$OCPUS memory_gb=$MEMORY_GB
 
 ADS=()
 if [[ -n "$AVAILABILITY_DOMAINS" ]]; then
-  read -r -a ADS <<< "$AVAILABILITY_DOMAINS"
+  IFS=' ' read -r -a ADS <<< "$AVAILABILITY_DOMAINS"
 else
   if ! AD_JSON=$(oci_cmd iam availability-domain list --compartment-id "$COMPARTMENT_ID" --region "$REGION" 2>/dev/null); then
     log "AVAILABILITY_DOMAIN_LOOKUP_ERROR; inspect local OCI CLI configuration"
@@ -124,7 +124,7 @@ while true; do
         --shape-config "{\"ocpus\":$OCPUS,\"memoryInGBs\":$MEMORY_GB}" \
         --subnet-id "$SUBNET_ID" --assign-public-ip true --image-id "$IMAGE_ID" \
         --boot-volume-size-in-gbs "$BOOT_GB" --ssh-authorized-keys-file "$SSH_PUBLIC_KEY_FILE" \
-        --region "$REGION" --wait-for-state RUNNING --max-wait-seconds "$LAUNCH_TIMEOUT_SECONDS" 2>/dev/null); then
+        --region "$REGION" --wait-for-state RUNNING --max-wait-seconds "$LAUNCH_TIMEOUT_SECONDS" 2>&1); then
       # Any successful launch API response is terminal, even if its JSON is
       # unexpected. This avoids duplicate launches after an accepted request.
       unset LAUNCH_JSON
