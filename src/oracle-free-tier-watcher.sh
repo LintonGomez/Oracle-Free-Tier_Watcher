@@ -152,12 +152,15 @@ while true; do
   # output; it may contain OCIDs and infrastructure metadata.
   FOUND_AD=""
   CAPACITY_ERROR=false
+  CAPACITY_THROTTLED=false
   for AD in "${ADS[@]}"; do
     if CAPACITY_JSON=$(timeout "$CAPACITY_CHECK_TIMEOUT_SECONDS" "$OCI_CLI" --config-file "$OCI_CONFIG_FILE" --profile "$OCI_PROFILE" compute compute-capacity-report create \
         --availability-domain "$AD" --compartment-id "$COMPARTMENT_ID" \
         --shape-availabilities "[{\"instanceShape\":\"$SHAPE\",\"instanceShapeConfig\":{\"ocpus\":$OCPUS,\"memoryInGBs\":$MEMORY_GB}}]" \
         --region "$REGION" 2>&1); then
-      STATUS=$(printf '%s' "$CAPACITY_JSON" | jq -r '.data["shape-availabilities"][0]["availability-status"] // "UNKNOWN"' 2>/dev/null || printf 'UNKNOWN')
+      if ! STATUS=$(printf '%s' "$CAPACITY_JSON" | jq -er '.data["shape-availabilities"][0]["availability-status"] | strings' 2>/dev/null); then
+        STATUS="UNKNOWN"
+      fi
       unset CAPACITY_JSON
       if [[ "$STATUS" == "AVAILABLE" ]]; then
         FOUND_AD="$AD"
@@ -167,9 +170,7 @@ while true; do
       RC=$?
       if grep -Eqi 'TooManyRequests|429|throttl' <<<"${CAPACITY_JSON:-}"; then
         unset CAPACITY_JSON
-        log "CAPACITY_API_THROTTLED backoff_seconds=$API_THROTTLE_BACKOFF_SECONDS"
-        sleep "$API_THROTTLE_BACKOFF_SECONDS"
-        CAPACITY_ERROR=true
+        CAPACITY_THROTTLED=true
         break
       fi
       unset CAPACITY_JSON
@@ -179,6 +180,11 @@ while true; do
   done
 
   if [[ -z "$FOUND_AD" ]]; then
+    if [[ "$CAPACITY_THROTTLED" == "true" ]]; then
+      log "CAPACITY_API_THROTTLED backoff_seconds=$API_THROTTLE_BACKOFF_SECONDS"
+      sleep "$API_THROTTLE_BACKOFF_SECONDS"
+      continue
+    fi
     if [[ "$CAPACITY_ERROR" == "true" ]]; then
       WAIT="$INSTANCE_LIST_ERROR_BACKOFF_SECONDS"
       log "CAPACITY_UNCONFIRMED retry_seconds=$WAIT"
